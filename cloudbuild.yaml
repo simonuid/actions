@@ -1,0 +1,7 @@
+steps:
+- name: node:14.18.0
+  entrypoint: yarn
+  args: ["install"]
+- name: node:14.18.0
+  entrypoint: yarn
+  args: ["test"]

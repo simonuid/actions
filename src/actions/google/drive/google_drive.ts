@@ -1,7 +1,7 @@
 import * as https from "request-promise-native"
 
 import {GaxiosResponse} from "gaxios"
-import { Credentials } from "google-auth-library"
+import {Credentials, OAuth2Client} from "google-auth-library"
 import { drive_v3, google } from "googleapis"
 
 import * as winston from "winston"
@@ -186,7 +186,7 @@ export class GoogleDriveAction extends Hub.OAuthAction {
     return false
   }
 
-  oauth2Client(redirectUri: string | undefined) {
+  oauth2Client(redirectUri: string | undefined): OAuth2Client {
     return new google.auth.OAuth2(
       process.env.GOOGLE_DRIVE_CLIENT_ID,
       process.env.GOOGLE_DRIVE_CLIENT_SECRET,
@@ -195,9 +195,10 @@ export class GoogleDriveAction extends Hub.OAuthAction {
   }
 
    async sendData(filename: string, request: Hub.ActionRequest, drive: Drive) {
+     const mimeType = this.getMimeType(request)
      const fileMetadata: drive_v3.Schema$File = {
        name: filename,
-       mimeType: this.mimeType,
+       mimeType,
        parents: request.formParams.folder ? [request.formParams.folder] : undefined,
      }
 
@@ -232,6 +233,31 @@ export class GoogleDriveAction extends Hub.OAuthAction {
        })
      }
      return driveList
+   }
+
+   getMimeType(request: Hub.ActionRequest) {
+     if (this.mimeType) {return this.mimeType}
+     if (request.attachment && request.attachment.mime) {return request.attachment.mime}
+     switch (request.formParams.format) {
+       case "csv":
+         return "text/csv"
+       case "xlsx":
+         return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+       case "inline_json":
+         return "application/json"
+       case "json":
+         return "application/json"
+       case "json_label":
+         return "application/json"
+       case "json_detail":
+         return "application/json"
+       case "html":
+         return "text/html"
+       case "txt":
+         return "text/plain"
+       default:
+         return undefined
+     }
    }
 
   protected async getAccessTokenCredentialsFromCode(redirect: string, code: string) {

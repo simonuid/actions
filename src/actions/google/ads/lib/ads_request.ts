@@ -34,7 +34,6 @@ export class GoogleAdsActionRequest {
     readonly actionInstance: GoogleAdsCustomerMatch,
     readonly log: Logger,
   ) {
-
     const state = safeParseJson(hubRequest.params.state_json)
 
     if (!state || !state.tokens || !state.tokens.access_token || !state.tokens.refresh_token || !state.redirect) {
@@ -47,7 +46,8 @@ export class GoogleAdsActionRequest {
   }
 
   async checkTokens() {
-    if ( this.userState.tokens.expiry_date == null || this.userState.tokens.expiry_date < Date.now() ) {
+    // adding 5 minutes to expiry_date check to handle refresh edge case
+    if ( this.userState.tokens.expiry_date == null || this.userState.tokens.expiry_date < (Date.now() + 5 * 60000) ) {
       this.log("debug", "Tokens appear expired; attempting refresh.")
 
       const data = await this.actionInstance.oauthHelper.refreshAccessToken(this.userState.tokens)
@@ -63,7 +63,7 @@ export class GoogleAdsActionRequest {
   }
 
   setApiClient() {
-    this.apiClient = new GoogleAdsApiClient(this.accessToken, this.developerToken, this.loginCid)
+    this.apiClient = new GoogleAdsApiClient(this.log, this.accessToken, this.developerToken, this.loginCid)
   }
 
   get accessToken() {
@@ -72,6 +72,22 @@ export class GoogleAdsActionRequest {
 
   get createOrAppend() {
     return this.formParams.createOrAppend
+  }
+
+  get mobileDevice() {
+    return this.formParams.mobileDevice
+  }
+
+  get isMobileDevice() {
+    return this.mobileDevice === "yes"
+  }
+
+  get mobileAppId() {
+    return this.formParams.mobileAppId
+  }
+
+  get uploadKeyType() {
+    return this.isMobileDevice ? "MOBILE_ADVERTISING_ID" : "CONTACT_INFO"
   }
 
   get developerToken() {
@@ -113,6 +129,9 @@ export class GoogleAdsActionRequest {
         `createOrAppend must be either 'create' or 'append' (got '${this.formParams.createOrAppend}')`,
       )
     }
+    if (this.isMobileDevice && !this.mobileAppId) {
+      throw new MissingRequiredParamsError("Mobile application id is missing")
+    }
     if (!["yes", "no"].includes(this.formParams.doHashing)) {
       throw new MissingRequiredParamsError(`Hashing must be either 'yes' or 'no' (got '${this.formParams.doHashing}')`)
     }
@@ -129,7 +148,9 @@ export class GoogleAdsActionRequest {
       if (!newListName) {
         throw new MissingRequiredParamsError("Name for new list is missing")
       }
-      await executor.createUserList(newListName, newListDescription)
+      const timestamp = new Date().toISOString().substr(0, 19).replace("T", " ")
+      const newListNameWithTimestamp = `${newListName} (from Looker ${timestamp}Z)`
+      await executor.createUserList(newListNameWithTimestamp, newListDescription)
     } else {
       if (!executor.targetUserListRN) {
         throw new MissingRequiredParamsError("List resource name is missing or could not be created")
